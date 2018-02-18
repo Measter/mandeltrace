@@ -1,0 +1,14 @@
+[package]
+authors = ["Stuart Haidon <serayen.sh@gmail.com>"]
+name = "mandeltrace"
+version = "0.1.0"
+
+[dependencies]
+clap = "2.30.0"
+image = "0.18.0"
+imageproc = "0.13.0"
+indicatif = "0.9.0"
+itertools = "0.7.6"
+num = "0.1.42"
+rayon = "1.0.0"
+structopt = "0.2.3"
