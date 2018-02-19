@@ -1,5 +1,5 @@
 extern crate image;
-use image::{LumaA, GrayAlphaImage, Pixel};
+use image::{LumaA, Rgba, RgbaImage, Pixel};
 extern crate imageproc;
 use imageproc::drawing::draw_antialiased_line_segment_mut as draw_line;
 
@@ -65,6 +65,9 @@ struct Args {
     #[structopt(short="m", raw(possible_values="&DrawMode::variants()", case_insensitive="true"), default_value="All")]
     mode: DrawMode,
 
+    #[structopt(long="mb")]
+    overlay_mandel: bool,
+
     #[structopt(default_value="image.png")]
     image_name: String
 }
@@ -74,9 +77,16 @@ fn mandelbrot(z: Complex64, (x, y): (f64, f64)) -> Complex64 {
 }
 
 fn to_image_coord(z: Complex64, args: &Args) -> (i32, i32) {
-    let pos_x = (args.size as f64/2.0) + (z.re + args.re_off) * args.zoom - 0.5;
-    let pos_y = (args.size as f64/2.0) - (z.im + args.im_off) * args.zoom + 0.5;
+    let pos_x = (args.size as f64/2.0) + (z.re + args.re_off) * args.zoom;
+    let pos_y = (args.size as f64/2.0) + (z.im + args.im_off) * args.zoom;
     (pos_x as i32, pos_y as i32)
+}
+
+fn to_complex_coord(x: u32, y: u32, args: &Args) -> Complex64 {
+    let pos_x = (x as f64 - args.size as f64/2.0)/args.zoom - args.re_off;
+    let pos_y = (y as f64 - args.size as f64/2.0)/args.zoom - args.im_off;
+
+    Complex64::new(pos_x, pos_y)
 }
 
 fn blend(mut a: LumaA<u16>, mut b: LumaA<u16>, alpha: f32) -> LumaA<u16> {
@@ -85,7 +95,7 @@ fn blend(mut a: LumaA<u16>, mut b: LumaA<u16>, alpha: f32) -> LumaA<u16> {
     b
 }
 
-fn iterate_coordinate(coord: (f64, f64), args: &Args) -> Vec<Complex64> {
+fn iterate_coordinate(coord: (f64, f64), args: &Args) -> Option<Vec<Complex64>> {
     let mut z = mandelbrot(Complex64::default(), coord);
     let mut points = Vec::with_capacity(args.limit+1);
     points.push(z);
@@ -103,15 +113,15 @@ fn iterate_coordinate(coord: (f64, f64), args: &Args) -> Vec<Complex64> {
 
     use DrawMode::*;
     match (args.mode, did_escape) {
-        (All, _) => points,
-        (Escaped, true) => points,
-        (Trapped, false) => points,
-        _ => Vec::new()
+        (All, _) => Some(points),
+        (Escaped, true) => Some(points),
+        (Trapped, false) => Some(points),
+        _ => None
     }
 }
 
 fn iterate_chunk(chunk: &[(&f64, &f64)], image: &Mutex<&mut Image>, args: &Args) {
-    let traces: Vec<_> = chunk.iter().map(|&(&x, &y)| iterate_coordinate((x, y), args)).collect();
+    let traces: Vec<_> = chunk.iter().filter_map(|&(&x, &y)| iterate_coordinate((x, y), args)).collect();
 
     let ref mut image = *image.lock().expect("Lock failed");
 
@@ -122,12 +132,13 @@ fn iterate_chunk(chunk: &[(&f64, &f64)], image: &Mutex<&mut Image>, args: &Args)
     }
 }
 
-fn to_u8_image(image: &Image) -> GrayAlphaImage {
-    let mut out = GrayAlphaImage::new(image.width(), image.height());
+fn to_u8_image(image: &Image, base: Option<RgbaImage>) -> RgbaImage {
+    let mut out = base.unwrap_or_else(|| RgbaImage::from_pixel(image.width(), image.height(), Rgba([0, 0, 0, 255])));
 
     out.pixels_mut().zip(image.pixels())
         .for_each(|(o, i)| {
-            *o = LumaA([(i.data[0] >> 8) as u8, (i.data[1] >> 8) as u8]);
+            let i = Rgba([255, 255, 255, (i[0] >> 8) as u8]);
+            o.blend(&i);
         });
 
     out
@@ -137,6 +148,7 @@ fn main() {
     let args = Args::from_args();
 
     let mut canvas = Image::from_pixel(args.size, args.size, LumaA([0, u16::max_value()]));
+    let mut mandel = None;
 
     let coords: Vec<_> = (0_u32..).map(|x| -args.bounds + x as f64 * args.delta).take_while(|&x| x < args.bounds).collect();
     let all_coords: Vec<_> = coords.iter().cartesian_product(coords.iter()).collect();
@@ -155,6 +167,29 @@ fn main() {
             });
     }
 
-    let canvas = to_u8_image(&canvas);
+    if args.overlay_mandel {
+        mandel = Some(RgbaImage::from_fn(args.size, args.size, |x, y| {
+            let cmpl = to_complex_coord(x, y, &args);
+
+            let mut z = Complex64::default();
+            let mut did_escape = false;
+            for _ in 0..args.limit {
+                z = mandelbrot(z, (cmpl.re, cmpl.im));
+
+                if z.norm_sqr() > 4.0 {
+                    did_escape = true;
+                    break;
+                }
+            }
+
+            if did_escape {
+                Rgba([128, 0, 0, 255])
+            } else {
+                Rgba([0, 0, 0, 255])
+            }
+        }));
+    }
+
+    let canvas = to_u8_image(&canvas, mandel);
     canvas.save(&args.image_name).unwrap();
 }
