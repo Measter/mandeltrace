@@ -69,11 +69,14 @@ struct Args {
     overlay_mandel: bool,
 
     #[structopt(default_value="image.png")]
-    image_name: String
+    image_name: String,
+
+    #[structopt(short="p", default_value="2.0")]
+    pow: f64,
 }
 
-fn mandelbrot(z: Complex64, (x, y): (f64, f64)) -> Complex64 {
-    z*z + Complex64::new(x, y)
+fn mandelbrot(z: Complex64, (x, y): (f64, f64), args: &Args) -> Complex64 {
+    z.powf(args.pow) + Complex64::new(x, y)
 }
 
 fn to_image_coord(z: Complex64, args: &Args) -> (i32, i32) {
@@ -96,13 +99,13 @@ fn blend(mut a: LumaA<u16>, mut b: LumaA<u16>, alpha: f32) -> LumaA<u16> {
 }
 
 fn iterate_coordinate(coord: (f64, f64), args: &Args) -> Option<Vec<Complex64>> {
-    let mut z = mandelbrot(Complex64::default(), coord);
+    let mut z = mandelbrot(Complex64::default(), coord, &args);
     let mut points = Vec::with_capacity(args.limit+1);
     points.push(z);
 
     let mut did_escape = false;
     for _ in 0..args.limit {
-        z = mandelbrot(z, coord);
+        z = mandelbrot(z, coord, &args);
         points.push(z);
 
         if z.im.abs() > args.bounds || z.re.abs() > args.bounds {
@@ -174,7 +177,7 @@ fn main() {
             let mut z = Complex64::default();
             let mut did_escape = false;
             for _ in 0..args.limit {
-                z = mandelbrot(z, (cmpl.re, cmpl.im));
+                z = mandelbrot(z, (cmpl.re, cmpl.im), &args);
 
                 if z.norm_sqr() > 4.0 {
                     did_escape = true;
