@@ -2,13 +2,14 @@
 authors = ["Stuart Haidon <serayen.sh@gmail.com>"]
 name = "mandeltrace"
 version = "0.1.0"
+edition = "2018"
 
 [dependencies]
-clap = "2.33.0"
-image = "0.21.1"
-imageproc = "0.18.0"
-indicatif = "0.11.0"
-itertools = "0.8.0"
-num = "0.2.0"
-rayon = "1.0.3"
-structopt = "0.2.15"
+clap = "2.33.3"
+image = "0.23.14"
+imageproc = "0.22.0"
+indicatif = "0.16.2"
+itertools = "0.10.1"
+num = "0.4.0"
+rayon = "1.5.1"
+structopt = "0.3.22"
